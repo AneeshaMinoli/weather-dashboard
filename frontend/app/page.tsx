@@ -8,26 +8,32 @@ import DemoButton from "@/components/DemoButton";
 import ModeToggle from "@/components/ModeToggle";
 import LocationSearch from "@/components/LocationSearch";
 import CityCard from "@/components/CityCard";
-import ForecastStrip, { ForecastDay } from "@/components/ForecastStrip";
-import WaveLine from "@/components/WaveLine";
-import { MapPin, Wind, Droplet, Gauge, Clock } from "lucide-react";
+import WeatherNowCard from "@/components/WeatherNowCard";
+import TodayWeekCard, { HourPill } from "@/components/TodayWeekCard";
+import RainChanceChart, { HourBar } from "@/components/RainChanceChart";
+import UVGauge from "@/components/UVGauge";
+import WindChart, { WindBar } from "@/components/WindChart";
+import HumidityCard from "@/components/HumidityCard";
 
 interface CityData { name: string; condition: string; temp: string; icon: IconType }
+interface HourFull extends HourPill, HourBar, WindBar {}
 
 export default function Home() {
   const [mode, setMode] = useState<"live" | "demo">("demo");
   const [demoKey, setDemoKey] = useState<PresetKey>("rainy");
-  const [liveData, setLiveData] = useState<WeatherPreset | null>(null);
-  const [liveForecast, setLiveForecast] = useState<ForecastDay[]>([]);
+  const [liveData, setLiveData] = useState<(WeatherPreset & { feelsLike?: string; uv?: number }) | null>(null);
+  const [liveHourly, setLiveHourly] = useState<HourFull[]>([]);
   const [liveCities, setLiveCities] = useState<CityData[]>([]);
   const [city, setCity] = useState("Kandy");
-  const [localTime, setLocalTime] = useState<string | null>(null);
+  const [sunrise, setSunrise] = useState<string | null>(null);
+  const [sunset, setSunset] = useState<string | null>(null);
+  const [dayLength, setDayLength] = useState<string | null>(null);
+  const [highToday, setHighToday] = useState<string | null>(null);
+  const [lowToday, setLowToday] = useState<string | null>(null);
   const [searchError, setSearchError] = useState("");
-  const [selectedDay, setSelectedDay] = useState(0);
 
   const fetchLiveWeather = useCallback(async (cityName: string) => {
     setSearchError("");
-    setSelectedDay(0);
     try {
       const [weatherRes, forecastRes, citiesRes] = await Promise.all([
         fetch(`http://localhost:5000/api/weather?city=${encodeURIComponent(cityName)}`),
@@ -39,11 +45,15 @@ export default function Home() {
       const forecast = await forecastRes.json();
       const cities = await citiesRes.json();
       const visual = weatherPresets[mapped.presetKey as PresetKey] ?? weatherPresets.day;
-      setLiveData({ ...visual, temp: mapped.temp, condition: mapped.condition, description: mapped.description, humidity: mapped.humidity, precipitation: mapped.precipitation, wind: mapped.wind });
-      setLiveForecast(forecast.days ?? []);
+      setLiveData({ ...visual, temp: mapped.temp, condition: mapped.condition, description: mapped.description, humidity: mapped.humidity, precipitation: mapped.precipitation, wind: mapped.wind, feelsLike: mapped.feelsLike, uv: mapped.uv });
+      setLiveHourly(forecast.hourly ?? []);
       setLiveCities(cities.cities ?? []);
       setCity(mapped.locationName);
-      setLocalTime(mapped.localTime);
+      setSunrise(forecast.sunrise);
+      setSunset(forecast.sunset);
+      setDayLength(forecast.dayLength);
+      setHighToday(forecast.highToday);
+      setLowToday(forecast.lowToday);
     } catch {
       setSearchError("Couldn't reach the server");
     }
@@ -55,68 +65,76 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
-  const baseData = mode === "demo" ? weatherPresets[demoKey] : liveData ?? weatherPresets[demoKey];
-  const forecastDays = mode === "live" ? liveForecast : undefined;
+  const data = mode === "demo" ? weatherPresets[demoKey] : liveData ?? weatherPresets[demoKey];
   const cities = mode === "live" && liveCities.length > 0 ? liveCities : demoCities;
-  const selectedForecast = mode === "live" && selectedDay > 0 ? liveForecast[selectedDay] : null;
-  const data = selectedForecast
-    ? { ...baseData, temp: selectedForecast.temp, condition: selectedForecast.condition ?? baseData.condition, humidity: selectedForecast.humidity ?? baseData.humidity, precipitation: selectedForecast.precipitation ?? baseData.precipitation, wind: selectedForecast.wind ?? baseData.wind, headline: selectedForecast.condition ?? baseData.headline, ...(weatherPresets[selectedForecast.presetKey as PresetKey] ? { videoSrc: weatherPresets[selectedForecast.presetKey as PresetKey].videoSrc, poster: weatherPresets[selectedForecast.presetKey as PresetKey].poster } : {}) }
-    : baseData;
+  const hourly = mode === "live" ? liveHourly : [];
 
   return (
     <main className="relative h-screen overflow-hidden text-white">
       <VideoBackground src={data.videoSrc} poster={data.poster} />
 
-      <div className="relative z-30 h-full flex flex-col justify-between p-6 md:p-10">
-        <div className="flex justify-between items-start flex-wrap gap-3">
-          <span className="text-xs bg-white/15 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/30">
+      <div className="relative z-30 h-full flex flex-col gap-4 p-6 md:p-8">
+        <div className="flex items-center gap-4 flex-wrap">
+          <span className="text-xs bg-white/15 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/30 shrink-0">
             Weather forecast
           </span>
-          <div className="flex gap-2 items-center flex-wrap">
-            {mode === "live" && <LocationSearch onSelect={(name) => fetchLiveWeather(name)} />}
+          {mode === "live" && (
+            <div className="flex-1 min-w-[200px] max-w-xl">
+              <LocationSearch onSelect={(name) => fetchLiveWeather(name)} />
+            </div>
+          )}
+          <div className="flex gap-2 items-center flex-wrap ml-auto">
             <ModeToggle mode={mode} onChange={setMode} />
             {mode === "demo" && <DemoButton active={demoKey} onSelect={setDemoKey} />}
           </div>
         </div>
         {searchError && <p className="text-xs text-red-300">{searchError}</p>}
 
-        <div className="flex-1 flex items-start justify-between gap-8 mt-4">
-          <div className="max-w-[480px]">
-            <h1 className="text-6xl md:text-7xl font-semibold leading-[1.05] mb-5 whitespace-pre-line">{data.headline}</h1>
-            <p className="text-sm md:text-base opacity-80 leading-relaxed">{data.description}</p>
+        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4 min-h-0">
+          <div className="grid grid-rows-2 gap-4 min-h-0">
+            <WeatherNowCard
+              location={mode === "live" ? city : "Central Kandy"}
+              temp={data.temp}
+              feelsLike={mode === "live" ? liveData?.feelsLike : undefined}
+              high={mode === "live" ? highToday : null}
+              low={mode === "live" ? lowToday : null}
+              icon={data.icon}
+            />
+            <TodayWeekCard hours={hourly} sunrise={sunrise} sunset={sunset} dayLength={dayLength} />
           </div>
 
-          <div className="w-full md:w-[260px] flex flex-col gap-3 shrink-0">
-            <div className="bg-white/15 backdrop-blur-xl border border-white/35 rounded-2xl p-5">
-              <div className="flex items-center gap-1.5 text-sm opacity-85 mb-1">
-                <MapPin size={14} />
-                <span>{mode === "live" ? city : "Central Kandy"}</span>
-              </div>
-              {mode === "live" && localTime && (
-                <div className="flex items-center gap-1.5 text-xs opacity-60 mb-2">
-                  <Clock size={12} />
-                  <span>{localTime.split(" ")[1]} · {localTime.split(" ")[0]}</span>
+          <div className="grid grid-rows-2 gap-4 min-h-0">
+            <div className="bg-black/30 backdrop-blur-xl border border-white/15 rounded-3xl p-5">
+              <p className="text-sm opacity-80 mb-3">Today&apos;s Highlight</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-white/10 rounded-2xl p-3">
+                  <p className="text-[11px] opacity-60 mb-1">Chances of Rain</p>
+                  {hourly.length > 0 ? <RainChanceChart hours={hourly} /> : <p className="text-xs opacity-50 h-16 flex items-center">No live data</p>}
                 </div>
-              )}
-              <div className="flex items-baseline gap-1 mb-3">
-                <span className="text-5xl font-semibold">{data.temp}</span>
-                <span className="text-2xl opacity-70">C</span>
-              </div>
-              <div className="flex gap-4 text-xs opacity-90">
-                <span className="flex items-center gap-1"><Wind size={14} />{data.wind}</span>
-                <span className="flex items-center gap-1"><Droplet size={14} />{data.precipitation}</span>
-                <span className="flex items-center gap-1"><Gauge size={14} />{data.humidity}</span>
+                <div className="bg-white/10 rounded-2xl p-3">
+                  <p className="text-[11px] opacity-60 mb-1">UV Index</p>
+                  <UVGauge uv={mode === "live" ? (liveData?.uv ?? 0) : 5} />
+                </div>
+                <div className="bg-white/10 rounded-2xl p-3">
+                  <p className="text-[11px] opacity-60 mb-1">Wind Status</p>
+                  {hourly.length > 0 ? <WindChart hours={hourly} /> : <p className="text-xs opacity-50 h-16 flex items-center">No live data</p>}
+                </div>
+                <div className="bg-white/10 rounded-2xl p-3">
+                  <p className="text-[11px] opacity-60 mb-1">Humidity</p>
+                  <HumidityCard humidity={data.humidity} />
+                </div>
               </div>
             </div>
-            {cities.map((c) => (
-              <CityCard key={c.name} {...c} />
-            ))}
-          </div>
-        </div>
 
-        <div>
-          <WaveLine />
-          <ForecastStrip days={forecastDays} activeDay={selectedDay} onSelectDay={setSelectedDay} />
+            <div className="bg-black/30 backdrop-blur-xl border border-white/15 rounded-3xl p-5">
+              <p className="text-sm opacity-80 mb-3">Other Cities</p>
+              <div className="grid grid-cols-3 gap-3 h-[calc(100%-2rem)]">
+                {cities.map((c) => (
+                  <CityCard key={c.name} {...c} />
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </main>
