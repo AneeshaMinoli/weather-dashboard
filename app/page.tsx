@@ -1,69 +1,96 @@
-import Image from "next/image";
+"use client";
+
+import { useState, useEffect } from "react";
+import { weatherPresets, PresetKey, WeatherPreset, IconType } from "@/lib/weatherPresets";
+import { otherCities as demoCities } from "@/lib/otherCities";
+import VideoBackground from "@/components/VideoBackground";
+import DemoButton from "@/components/DemoButton";
+import ModeToggle from "@/components/ModeToggle";
+import CityCard from "@/components/CityCard";
+import ForecastStrip, { ForecastDay } from "@/components/ForecastStrip";
+import { MapPin, Wind, Droplet, Gauge } from "lucide-react";
+
+interface CityData { name: string; condition: string; temp: string; icon: IconType }
 
 export default function Home() {
+  const [mode, setMode] = useState<"live" | "demo">("demo");
+  const [demoKey, setDemoKey] = useState<PresetKey>("rainy");
+  const [liveData, setLiveData] = useState<WeatherPreset | null>(null);
+  const [liveForecast, setLiveForecast] = useState<ForecastDay[]>([]);
+  const [liveCities, setLiveCities] = useState<CityData[]>([]);
+
+  useEffect(() => {
+    if (mode !== "live") return;
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      const { latitude: lat, longitude: lng } = pos.coords;
+
+      const [weatherRes, forecastRes, citiesRes] = await Promise.all([
+        fetch(`http://localhost:5000/api/weather?lat=${lat}&lng=${lng}`),
+        fetch(`http://localhost:5000/api/forecast?lat=${lat}&lng=${lng}`),
+        fetch(`http://localhost:5000/api/cities`),
+      ]);
+
+      const mapped = await weatherRes.json();
+      const forecast = await forecastRes.json();
+      const cities = await citiesRes.json();
+
+      const visual = weatherPresets[mapped.presetKey as PresetKey] ?? weatherPresets.day;
+      setLiveData({ ...visual, temp: mapped.temp, condition: mapped.condition, description: mapped.description, humidity: mapped.humidity, precipitation: mapped.precipitation, wind: mapped.wind });
+      setLiveForecast(forecast.days ?? []);
+      setLiveCities(cities.cities ?? []);
+    });
+  }, [mode]);
+
+  const data = mode === "demo" ? weatherPresets[demoKey] : liveData ?? weatherPresets[demoKey];
+  const forecastDays = mode === "live" ? liveForecast : undefined;
+  const cities = mode === "live" && liveCities.length > 0 ? liveCities : demoCities;
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main className="relative min-h-screen overflow-hidden text-white p-8">
+      <VideoBackground src={data.videoSrc} poster={data.poster} />
+
+      <div className="relative z-[5] flex justify-between items-start">
+        <span className="text-xs bg-white/15 backdrop-blur-sm px-3 py-1.5 rounded-full border border-white/30">
+          Weather forecast
+        </span>
+        <div className="flex gap-2">
+          <ModeToggle mode={mode} onChange={setMode} />
+          {mode === "demo" && <DemoButton active={demoKey} onSelect={setDemoKey} />}
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </div>
+
+      <div className="relative z-[5] flex flex-col md:flex-row justify-between gap-8 mt-8">
+        <div className="flex-1 flex flex-col justify-between">
+          <div>
+            <h1 className="text-5xl font-semibold leading-[1.1] mb-4 whitespace-pre-line">{data.headline}</h1>
+            <p className="text-sm opacity-80 max-w-[420px] leading-relaxed">{data.description}</p>
+          </div>
+          <div className="mt-16">
+            <ForecastStrip days={forecastDays} />
+          </div>
         </div>
-      </main>
-    </div>
+
+        <div className="w-full md:w-[260px] flex flex-col gap-3 shrink-0">
+          <div className="bg-white/15 backdrop-blur-xl border border-white/35 rounded-2xl p-5">
+            <div className="flex items-center gap-1.5 text-sm opacity-85 mb-2">
+              <MapPin size={14} />
+              <span>Central Kandy</span>
+            </div>
+            <div className="flex items-baseline gap-1 mb-3">
+              <span className="text-5xl font-semibold">{data.temp}</span>
+              <span className="text-2xl opacity-70">C</span>
+            </div>
+            <div className="flex gap-4 text-xs opacity-90">
+              <span className="flex items-center gap-1"><Wind size={14} />{data.wind}</span>
+              <span className="flex items-center gap-1"><Droplet size={14} />{data.precipitation}</span>
+              <span className="flex items-center gap-1"><Gauge size={14} />{data.humidity}</span>
+            </div>
+          </div>
+          {cities.map((c) => (
+            <CityCard key={c.name} {...c} />
+          ))}
+        </div>
+      </div>
+    </main>
   );
 }
