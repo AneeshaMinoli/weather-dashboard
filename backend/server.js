@@ -5,6 +5,16 @@ require("dotenv").config();
 const app = express();
 app.use(cors());
 
+const mongoose = require("mongoose");
+const authRoutes = require("./routes/auth");
+
+mongoose.connect(process.env.MONGODB_URI)
+  .then(() => console.log("Connected to MongoDB"))
+  .catch((err) => console.error("MongoDB connection error:", err));
+
+app.use(express.json()); // needed to read JSON request bodies (signup/login send JSON)
+app.use("/api/auth", authRoutes);
+
 const KEY = process.env.WEATHERAPI_KEY;
 
 function mapPresetKey(text, precipMm = 0) {
